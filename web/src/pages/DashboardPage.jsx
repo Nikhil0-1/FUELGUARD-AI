@@ -10,7 +10,7 @@ import { db } from '../config/firebase';
 import { RiBaseStationLine, RiLockLine, RiLockUnlockLine, RiShieldAlertLine } from 'react-icons/ri';
 
 export default function DashboardPage() {
-  const { liveData, devices, notifications, loading } = useContext(DataContext);
+  const { liveData, devices, notifications, loading, isMock, writeMockData } = useContext(DataContext);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [lockingInProgress, setLockingInProgress] = useState(false);
 
@@ -33,13 +33,22 @@ export default function DashboardPage() {
     setLockingInProgress(true);
     const currentLockStatus = activeDeviceDetails.lockStatus || false;
     try {
-      // Set value in DB config block
-      const lockConfigRef = ref(db, `FuelGuardAI/Devices/${activeDeviceId}/config/lockStatus`);
-      await set(lockConfigRef, !currentLockStatus);
-      
-      // Update lock status directly in device state path
-      const lockStateRef = ref(db, `FuelGuardAI/Devices/${activeDeviceId}/lockStatus`);
-      await set(lockStateRef, !currentLockStatus);
+      if (isMock) {
+        const currentDb = JSON.parse(localStorage.getItem('fg_mock_db') || '{}');
+        const targetDev = currentDb.Devices?.[activeDeviceId];
+        if (targetDev) {
+          targetDev.lockStatus = !currentLockStatus;
+          writeMockData('Devices', null, { ...currentDb.Devices, [activeDeviceId]: targetDev });
+        }
+      } else {
+        // Set value in DB config block
+        const lockConfigRef = ref(db, `FuelGuardAI/Devices/${activeDeviceId}/config/lockStatus`);
+        await set(lockConfigRef, !currentLockStatus);
+        
+        // Update lock status directly in device state path
+        const lockStateRef = ref(db, `FuelGuardAI/Devices/${activeDeviceId}/lockStatus`);
+        await set(lockStateRef, !currentLockStatus);
+      }
     } catch (error) {
       console.error("Failed to toggle device lock status:", error);
     } finally {

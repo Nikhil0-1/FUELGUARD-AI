@@ -20,7 +20,7 @@ import {
 } from 'react-icons/ri';
 
 export default function AdminPage() {
-  const { globalSettings, devices, loading } = useContext(DataContext);
+  const { globalSettings, devices, loading, isMock, writeMockData } = useContext(DataContext);
   const { isSuperAdmin, currentUser } = useAuth();
   const { addDevice, updateDevice, deleteDevice, triggerDeviceCommand } = useDevices();
   
@@ -69,6 +69,19 @@ export default function AdminPage() {
 
   // Load Admin Data: Users & Logs list
   const fetchAdminData = async () => {
+    if (isMock) {
+      const currentDb = JSON.parse(localStorage.getItem('fg_mock_db') || '{}');
+      
+      const usersArr = Object.entries(currentDb.Users || {}).map(([uid, val]) => ({ uid, ...val }));
+      setUsersList(usersArr);
+      
+      const logsArr = Object.values(currentDb.Logs || {})
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 50);
+      setLogsList(logsArr);
+      return;
+    }
+
     try {
       // 1. Fetch Users
       const usersRef = ref(db, 'FuelGuardAI/Users');
@@ -99,6 +112,23 @@ export default function AdminPage() {
     }
   }, [activeTab]);
 
+  const addMockLog = (action, details) => {
+    try {
+      const currentDb = JSON.parse(localStorage.getItem('fg_mock_db') || '{}');
+      const currentLogs = currentDb.Logs || [];
+      const newLog = {
+        id: "log_" + Date.now(),
+        action,
+        userId: currentUser?.uid || "MOCK_ADMIN_UID",
+        details,
+        timestamp: Date.now()
+      };
+      writeMockData('Logs', null, [newLog, ...currentLogs]);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   // Handle Fuel Price Update
   const handleUpdatePrice = async (e) => {
     e.preventDefault();
@@ -114,29 +144,40 @@ export default function AdminPage() {
 
     setSubmitting(true);
     try {
-      const settingsRef = ref(db, 'FuelGuardAI/Settings/fuelPrice');
-      
-      // We push a price history log
-      const histRef = ref(db, `FuelGuardAI/Settings/fuelPrice/history/${Date.now()}`);
-      await set(histRef, {
-        price: val,
-        setBy: currentUser.uid,
-        timestamp: Date.now()
-      });
-
-      // Update current price
-      await update(settingsRef, { current: val });
-      
-      await logActivity(
-        "FUEL_PRICE_CHANGED",
-        currentUser.uid,
-        `Fuel price changed from ₹${currentPrice} to ₹${val}`
-      );
-
+      if (isMock) {
+        const currentDb = JSON.parse(localStorage.getItem('fg_mock_db') || '{}');
+        const currentSettings = currentDb.Settings || {};
+        if (!currentSettings.fuelPrice) currentSettings.fuelPrice = { current: 106.31, history: {} };
+        
+        currentSettings.fuelPrice.current = val;
+        const timestamp = Date.now();
+        if (!currentSettings.fuelPrice.history) currentSettings.fuelPrice.history = {};
+        currentSettings.fuelPrice.history[timestamp.toString()] = {
+          price: val,
+          setBy: currentUser?.uid || "MOCK_ADMIN_UID",
+          timestamp
+        };
+        writeMockData('Settings', null, currentSettings);
+        addMockLog("FUEL_PRICE_CHANGED", `Fuel price changed from ₹${currentPrice} to ₹${val}`);
+      } else {
+        const settingsRef = ref(db, 'FuelGuardAI/Settings/fuelPrice');
+        const histRef = ref(db, `FuelGuardAI/Settings/fuelPrice/history/${Date.now()}`);
+        await set(histRef, {
+          price: val,
+          setBy: currentUser.uid,
+          timestamp: Date.now()
+        });
+        await update(settingsRef, { current: val });
+        await logActivity(
+          "FUEL_PRICE_CHANGED",
+          currentUser.uid,
+          `Fuel price changed from ₹${currentPrice} to ₹${val}`
+        );
+      }
       toast.success("Fuel price successfully updated.");
     } catch (err) {
       console.error(err);
-      toast.error("Permission error. Price update failed.");
+      toast.error("Price update failed.");
     } finally {
       setSubmitting(false);
     }
@@ -161,19 +202,24 @@ export default function AdminPage() {
 
     setSubmitting(true);
     try {
-      // 1. Update calibration factor inside device settings
-      await updateDevice(calDeviceId, { calibrationFactor: factorVal });
-      
-      // 2. Clear out device command queue and trigger calibration sync
-      await triggerDeviceCommand(calDeviceId, "syncSettings");
-
-      await logActivity(
-        "CALIBRATION_CHANGED",
-        currentUser.uid,
-        `Adjusted calibration factor of ${calDeviceId} to ${factorVal}`
-      );
-
-      toast.success("Calibration settings updated and synced to ESP.");
+      if (isMock) {
+        const currentDb = JSON.parse(localStorage.getItem('fg_mock_db') || '{}');
+        const targetDev = currentDb.Devices?.[calDeviceId];
+        if (targetDev) {
+          targetDev.calibrationFactor = factorVal;
+          writeMockData('Devices', null, { ...currentDb.Devices, [calDeviceId]: targetDev });
+          addMockLog("CALIBRATION_CHANGED", `Adjusted calibration factor of ${calDeviceId} to ${factorVal}`);
+        }
+      } else {
+        await updateDevice(calDeviceId, { calibrationFactor: factorVal });
+        await triggerDeviceCommand(calDeviceId, "syncSettings");
+        await logActivity(
+          "CALIBRATION_CHANGED",
+          currentUser.uid,
+          `Adjusted calibration factor of ${calDeviceId} to ${factorVal}`
+        );
+      }
+      toast.success("Calibration settings updated.");
     } catch (err) {
       console.error(err);
       toast.error("Failed to update calibration factor.");
@@ -185,6 +231,11 @@ export default function AdminPage() {
   // Remote Commands
   const handleRemoteCommand = async (deviceId, actionStr) => {
     try {
+      if (isMock) {
+        toast.success(`Mock command [${actionStr}] simulated on local console.`);
+        addMockLog("DEVICE_RESTART", `Simulated remote action [${actionStr}] on node ${deviceId}`);
+        return;
+      }
       await triggerDeviceCommand(deviceId, actionStr);
       await logActivity(
         "DEVICE_RESTART",
@@ -208,19 +259,52 @@ export default function AdminPage() {
 
     setSubmitting(true);
     try {
-      await addDevice(newDevId.trim(), {
-        name: newDevName.trim(),
-        location: newDevLoc.trim() || 'Bay Main',
-        vehicleId: newDevVeh.trim() || 'VH-AUTO',
-        calibrationFactor: parseFloat(newDevCal) || 7.5
-      });
-
-      await logActivity(
-        "USER_ADDED",
-        currentUser.uid,
-        `Added new controller node registration ${newDevId}`
-      );
-
+      if (isMock) {
+        const currentDb = JSON.parse(localStorage.getItem('fg_mock_db') || '{}');
+        const devPayload = {
+          name: newDevName.trim(),
+          location: newDevLoc.trim() || 'Bay Main',
+          vehicleId: newDevVeh.trim() || 'VH-AUTO',
+          calibrationFactor: parseFloat(newDevCal) || 7.5,
+          enabled: true,
+          firmwareVersion: "1.0.0",
+          wifiStrength: -60,
+          lastSeen: Date.now(),
+          status: 'online',
+          lockStatus: false
+        };
+        const updatedDevices = { ...currentDb.Devices, [newDevId.trim()]: devPayload };
+        writeMockData('Devices', null, updatedDevices);
+        
+        // Seed live data path too
+        const updatedLiveData = { 
+          ...currentDb.LiveData, 
+          [newDevId.trim()]: {
+            flowRate: 0,
+            totalLitres: 0,
+            fuelCost: 0,
+            pulseCount: 0,
+            averageFlow: 0,
+            duration: 0,
+            status: "Waiting",
+            timestamp: Date.now()
+          } 
+        };
+        writeMockData('LiveData', null, updatedLiveData);
+        addMockLog("USER_ADDED", `Added new controller node registration ${newDevId}`);
+      } else {
+        await addDevice(newDevId.trim(), {
+          name: newDevName.trim(),
+          location: newDevLoc.trim() || 'Bay Main',
+          vehicleId: newDevVeh.trim() || 'VH-AUTO',
+          calibrationFactor: parseFloat(newDevCal) || 7.5
+        });
+        await logActivity(
+          "USER_ADDED",
+          currentUser.uid,
+          `Added new controller node registration ${newDevId}`
+        );
+      }
       toast.success("Device successfully registered.");
       setNewDevId('');
       setNewDevName('');
@@ -241,12 +325,24 @@ export default function AdminPage() {
     }
 
     try {
-      await deleteDevice(deviceId);
-      await logActivity(
-        "USER_DELETED",
-        currentUser.uid,
-        `Unregistered controller node ${deviceId}`
-      );
+      if (isMock) {
+        const currentDb = JSON.parse(localStorage.getItem('fg_mock_db') || '{}');
+        const updatedDevices = { ...currentDb.Devices };
+        delete updatedDevices[deviceId];
+        writeMockData('Devices', null, updatedDevices);
+
+        const updatedLiveData = { ...currentDb.LiveData };
+        delete updatedLiveData[deviceId];
+        writeMockData('LiveData', null, updatedLiveData);
+        addMockLog("USER_DELETED", `Unregistered controller node ${deviceId}`);
+      } else {
+        await deleteDevice(deviceId);
+        await logActivity(
+          "USER_DELETED",
+          currentUser.uid,
+          `Unregistered controller node ${deviceId}`
+        );
+      }
       toast.success("Device unregistered.");
     } catch (err) {
       console.error(err);
@@ -264,24 +360,37 @@ export default function AdminPage() {
 
     setSubmitting(true);
     try {
-      // For database entries, we map a pseudo UUID since Firebase handles auth creation separately
-      const mockUid = "USER_" + Math.random().toString(36).substring(2, 9).toUpperCase();
-      const userRef = ref(db, `FuelGuardAI/Users/${mockUid}`);
-      
-      await set(userRef, {
-        email: newUserEmail.trim(),
-        displayName: newUserName.trim(),
-        role: newUserRole,
-        enabled: true,
-        createdAt: Date.now()
-      });
-
-      await logActivity(
-        "USER_ADDED",
-        currentUser.uid,
-        `Created database credential profile for user: ${newUserEmail}`
-      );
-
+      if (isMock) {
+        const mockUid = "USER_" + Math.random().toString(36).substring(2, 9).toUpperCase();
+        const currentDb = JSON.parse(localStorage.getItem('fg_mock_db') || '{}');
+        const updatedUsers = {
+          ...currentDb.Users,
+          [mockUid]: {
+            email: newUserEmail.trim(),
+            displayName: newUserName.trim(),
+            role: newUserRole,
+            enabled: true,
+            createdAt: Date.now()
+          }
+        };
+        writeMockData('Users', null, updatedUsers);
+        addMockLog("USER_ADDED", `Created database credential profile for user: ${newUserEmail}`);
+      } else {
+        const mockUid = "USER_" + Math.random().toString(36).substring(2, 9).toUpperCase();
+        const userRef = ref(db, `FuelGuardAI/Users/${mockUid}`);
+        await set(userRef, {
+          email: newUserEmail.trim(),
+          displayName: newUserName.trim(),
+          role: newUserRole,
+          enabled: true,
+          createdAt: Date.now()
+        });
+        await logActivity(
+          "USER_ADDED",
+          currentUser.uid,
+          `Created database credential profile for user: ${newUserEmail}`
+        );
+      }
       toast.success("User access profile registered.");
       setNewUserEmail('');
       setNewUserName('');
@@ -297,8 +406,16 @@ export default function AdminPage() {
   // Toggle User Profile Active state
   const handleToggleUser = async (uid, currentEnabled) => {
     try {
-      const userRef = ref(db, `FuelGuardAI/Users/${uid}`);
-      await update(userRef, { enabled: !currentEnabled });
+      if (isMock) {
+        const currentDb = JSON.parse(localStorage.getItem('fg_mock_db') || '{}');
+        if (currentDb.Users?.[uid]) {
+          currentDb.Users[uid].enabled = !currentEnabled;
+          writeMockData('Users', null, currentDb.Users);
+        }
+      } else {
+        const userRef = ref(db, `FuelGuardAI/Users/${uid}`);
+        await update(userRef, { enabled: !currentEnabled });
+      }
       toast.success("User status changed.");
       fetchAdminData();
     } catch (err) {

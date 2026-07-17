@@ -1,0 +1,12 @@
+# FuelGuard AI ESP8266 Library Dependencies
+# Install these libraries via the Arduino Library Manager:
+
+1. LiquidCrystal_I2C by Frank de Brabander (v1.1.2 or higher)
+   - Used to drive the 16x2 LCD display over I2C protocol.
+
+2. FirebaseClient by Mobizt (v1.2.0 or higher)
+   - Used for authenticated connections, live streaming, and REST APIs to Firebase.
+   - Note: Do NOT install the deprecated 'Firebase ESP8266 Client' or 'Firebase ESP Client'.
+
+3. SSLClient by MCUdude (Optional, installed automatically as sub-dependency by FirebaseClient)
+   - Handles secure SSL handshakes on microcontrollers.

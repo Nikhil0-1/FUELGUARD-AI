@@ -1,0 +1,98 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "FuelGuardAI": {
+
+      "Devices": {
+        ".read": "auth != null",
+        "$deviceId": {
+          ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'operator')",
+          ".validate": "newData.hasChildren(['name', 'status'])",
+
+          "config": {
+            ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin')"
+          },
+
+          "commands": {
+            ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin')"
+          }
+        }
+      },
+
+      "LiveData": {
+        ".read": "auth != null",
+        "$deviceId": {
+          ".write": "auth != null",
+          ".validate": "newData.hasChildren(['timestamp', 'status'])"
+        }
+      },
+
+      "Transactions": {
+        ".read": "auth != null",
+        ".indexOn": ["deviceId", "vehicleId", "date", "status", "startTime"],
+        "$transactionId": {
+          ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'operator')",
+          ".validate": "newData.hasChildren(['deviceId', 'fuel', 'price', 'status', 'startTime'])"
+        }
+      },
+
+      "Analytics": {
+        ".read": "auth != null",
+        "daily": {
+          "$date": {
+            ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'operator')"
+          }
+        },
+        "monthly": {
+          "$month": {
+            ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin')"
+          }
+        }
+      },
+
+      "Users": {
+        ".read": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin')",
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin'",
+          ".validate": "newData.hasChildren(['email', 'role', 'enabled'])",
+
+          "role": {
+            ".validate": "newData.val() === 'superadmin' || newData.val() === 'admin' || newData.val() === 'operator' || newData.val() === 'viewer'"
+          }
+        }
+      },
+
+      "Settings": {
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin'",
+
+        "fuelPrice": {
+          "current": {
+            ".validate": "newData.isNumber() && newData.val() > 0"
+          }
+        }
+      },
+
+      "Logs": {
+        ".read": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin')",
+        ".indexOn": ["action", "userId", "timestamp"],
+        "$logId": {
+          ".write": "auth != null",
+          ".validate": "newData.hasChildren(['action', 'userId', 'timestamp'])"
+        }
+      },
+
+      "Notifications": {
+        ".read": "auth != null",
+        ".indexOn": ["type", "read", "timestamp", "deviceId"],
+        "$notifId": {
+          ".write": "auth != null",
+          ".validate": "newData.hasChildren(['type', 'message', 'timestamp'])"
+        }
+      }
+    }
+  }
+}

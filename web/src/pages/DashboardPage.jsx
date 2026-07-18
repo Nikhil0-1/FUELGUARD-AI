@@ -7,7 +7,7 @@ import { StatusCard } from '../components/dashboard/StatusCard';
 import { RecentTransactions } from '../components/dashboard/RecentTransactions';
 import { ref, set } from 'firebase/database';
 import { db } from '../config/firebase';
-import { RiBaseStationLine, RiLockLine, RiLockUnlockLine, RiShieldAlertLine } from 'react-icons/ri';
+import { RiBaseStationLine, RiLockLine, RiLockUnlockLine, RiShieldCheckLine } from 'react-icons/ri';
 
 export default function DashboardPage() {
   const { liveData, devices, notifications, loading, isMock, writeMockData } = useContext(DataContext);
@@ -179,7 +179,7 @@ export default function DashboardPage() {
             <div className="space-y-3 max-h-[280px] overflow-y-auto pr-1">
               {notifications.length === 0 ? (
                 <div className="text-center py-10 text-sm text-text-secondary flex flex-col items-center gap-2">
-                  <RiShieldAlertLine size={32} className="text-success opacity-60" />
+                  <RiShieldCheckLine size={32} className="text-success opacity-60" />
                   <div>
                     <p className="font-semibold text-success">System Secure</p>
                     <p className="text-xs text-text-secondary mt-0.5">No security threats detected</p>

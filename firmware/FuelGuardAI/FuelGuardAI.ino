@@ -561,13 +561,12 @@ void loop() {
         fbConfig.host = FIREBASE_DATABASE_URL;
         fbConfig.api_key = FIREBASE_API_KEY;
         
-        // Disable email/password auth to save heap RAM and bypass SSL handshake failures
-        // fbAuth.user.email = FIREBASE_USER_EMAIL;
-        // fbAuth.user.password = FIREBASE_USER_PASSWORD;
+        fbAuth.user.email = FIREBASE_USER_EMAIL;
+        fbAuth.user.password = FIREBASE_USER_PASSWORD;
         
         Firebase.begin(&fbConfig, &fbAuth);
         firebaseInitialized = true;
-        Serial.println(F("[Firebase] Client initialization completed (No-Auth Mode)."));
+        Serial.println(F("[Firebase] Client initialization completed."));
         Serial.printf("[System] Free heap after Firebase init: %d bytes\n", ESP.getFreeHeap());
     }
 

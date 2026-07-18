@@ -5,7 +5,7 @@
         ".read": "auth != null",
         "$deviceId": {
           // Allow the device itself and admins/operators to update status and heartbeats
-          ".write": "true",
+          ".write": "auth != null",
           "config": {
             // Only Super Admins and Admins can update calibration/hardware profiles
             ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin' || auth.token.email === 'admin@fuelguard.ai')"
@@ -20,7 +20,7 @@
         ".read": "auth != null",
         "$deviceId": {
           // Allow real-time writes from edge NodeMCU
-          ".write": "true"
+          ".write": "auth != null"
         }
       },
       "Transactions": {
@@ -28,7 +28,7 @@
         ".indexOn": ["deviceId", "vehicleId", "date", "status", "startTime"],
         "$transactionId": {
           // Allow device to record completed transactions
-          ".write": "true"
+          ".write": "auth != null"
         }
       },
       "Analytics": {
@@ -58,7 +58,7 @@
       "Notifications": {
         ".read": "auth != null",
         "$notifId": {
-          ".write": "true"
+          ".write": "auth != null"
         }
       }
     }

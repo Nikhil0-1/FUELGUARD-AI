@@ -1,0 +1,13 @@
+{
+  "name": "fuelguard-ai-root",
+  "version": "1.0.0",
+  "description": "Root configuration and scripts for FuelGuard-AI",
+  "scripts": {
+    "install-web": "npm install --prefix web",
+    "dev": "npm run dev --prefix web",
+    "build": "npm run build --prefix web",
+    "deploy": "npm run build --prefix web && firebase deploy",
+    "deploy-hosting": "npm run build --prefix web && firebase deploy --only hosting",
+    "deploy-rules": "firebase deploy --only database"
+  }
+}

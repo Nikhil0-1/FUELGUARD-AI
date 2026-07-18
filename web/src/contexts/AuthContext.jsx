@@ -39,17 +39,32 @@ export const AuthProvider = ({ children }) => {
         try {
           const userRef = ref(db, `FuelGuardAI/Users/${user.uid}`);
           const snapshot = await get(userRef);
+          
+          let role = ROLES.VIEWER;
+          let uData = { email: user.email, role: ROLES.VIEWER, enabled: true };
+          
+          // Force superadmin role for admin@fuelguard.ai email in production
+          if (user.email === 'admin@fuelguard.ai') {
+            role = ROLES.SUPERADMIN;
+            uData = { email: user.email, role: ROLES.SUPERADMIN, enabled: true, displayName: 'Super Admin' };
+          }
+          
           if (snapshot.exists()) {
             const data = snapshot.val();
-            setUserRole(data.role || ROLES.VIEWER);
-            setUserData(data);
-          } else {
-            setUserRole(ROLES.VIEWER);
-            setUserData({ email: user.email, role: ROLES.VIEWER, enabled: true });
+            role = data.role || role;
+            uData = { ...uData, ...data };
           }
+          
+          setUserRole(role);
+          setUserData(uData);
         } catch (error) {
           console.error("Error fetching user role:", error);
-          setUserRole(ROLES.VIEWER);
+          if (user.email === 'admin@fuelguard.ai') {
+            setUserRole(ROLES.SUPERADMIN);
+            setUserData({ email: user.email, role: ROLES.SUPERADMIN, enabled: true, displayName: 'Super Admin' });
+          } else {
+            setUserRole(ROLES.VIEWER);
+          }
         }
       } else {
         setCurrentUser(null);
@@ -65,12 +80,12 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     setLoading(true);
     try {
-      // Temporary Mock Bypass for Local Testing
-      if (email === 'admin@fuelguard.ai' && password === 'admin123') {
+      // Temporary Mock Bypass for Local Testing (Only for mockadmin)
+      if (email === 'mockadmin@fuelguard.ai' && password === 'admin123') {
         const mockData = {
-          user: { uid: 'MOCK_ADMIN_UID', email: 'admin@fuelguard.ai' },
+          user: { uid: 'MOCK_ADMIN_UID', email: 'mockadmin@fuelguard.ai' },
           role: ROLES.SUPERADMIN,
-          userData: { email: 'admin@fuelguard.ai', role: ROLES.SUPERADMIN, enabled: true, displayName: 'Super Admin' }
+          userData: { email: 'mockadmin@fuelguard.ai', role: ROLES.SUPERADMIN, enabled: true, displayName: 'Mock Super Admin' }
         };
         localStorage.setItem('fg_mock_user', JSON.stringify(mockData));
         setCurrentUser(mockData.user);

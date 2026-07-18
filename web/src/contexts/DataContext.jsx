@@ -1,6 +1,7 @@
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useContext } from 'react';
 import { ref, onValue } from 'firebase/database';
 import { db } from '../config/firebase';
+import { AuthContext } from './AuthContext';
 
 export const DataContext = createContext(null);
 
@@ -60,7 +61,11 @@ export const DataProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const isMock = !!localStorage.getItem('fg_mock_user');
+  const authContext = useContext(AuthContext);
+  const currentUser = authContext?.currentUser;
+  
+  // Determine mock state based on current user session (UID)
+  const isMock = currentUser?.uid === 'MOCK_ADMIN_UID';
 
   // Unified mock write helper
   const writeMockData = (section, key, value) => {
@@ -120,6 +125,8 @@ export const DataProvider = ({ children }) => {
     }
 
     // 2. Production Firebase listeners
+    setLoading(true);
+    
     const liveRef = ref(db, 'FuelGuardAI/LiveData');
     const unsubscribeLive = onValue(liveRef, (snapshot) => {
       if (snapshot.exists()) {
@@ -127,6 +134,8 @@ export const DataProvider = ({ children }) => {
       } else {
         setLiveData({});
       }
+    }, (err) => {
+      console.warn("Live Readings listener error:", err);
     });
 
     const devicesRef = ref(db, 'FuelGuardAI/Devices');
@@ -136,6 +145,8 @@ export const DataProvider = ({ children }) => {
       } else {
         setDevices({});
       }
+    }, (err) => {
+      console.warn("Devices status listener error:", err);
     });
 
     const settingsRef = ref(db, 'FuelGuardAI/Settings');
@@ -145,6 +156,8 @@ export const DataProvider = ({ children }) => {
       } else {
         setGlobalSettings({});
       }
+    }, (err) => {
+      console.warn("Global settings listener error:", err);
     });
 
     const notifRef = ref(db, 'FuelGuardAI/Notifications');
@@ -160,6 +173,9 @@ export const DataProvider = ({ children }) => {
         setNotifications([]);
       }
       setLoading(false);
+    }, (err) => {
+      console.warn("Notifications listener error or rules block:", err);
+      setLoading(false); // Resolve loading screen block on auth rule failure
     });
 
     return () => {
@@ -168,7 +184,7 @@ export const DataProvider = ({ children }) => {
       unsubscribeSettings();
       unsubscribeNotif();
     };
-  }, [isMock]);
+  }, [isMock, currentUser]);
 
   const value = {
     liveData,

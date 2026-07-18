@@ -572,7 +572,11 @@ void loop() {
     if (isFbReady != firebaseReady) {
         firebaseReady = isFbReady;
         if (firebaseReady) {
+            Serial.println(F("[Firebase] Connection successful! Device online."));
             reportHeartbeat();
+        } else {
+            Serial.printf("[Firebase] Connection failed/lost. Reason: %s\n", fbdo.errorReason().c_str());
+            Serial.printf("[System] Free Heap: %d bytes\n", ESP.getFreeHeap());
         }
     }
 

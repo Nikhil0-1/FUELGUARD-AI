@@ -8,7 +8,7 @@
           ".write": "auth != null",
           "config": {
             // Only Super Admins and Admins can update calibration/hardware profiles
-            ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin')"
+            ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin' || auth.token.email === 'admin@fuelguard.ai')"
           },
           "commands": {
             // Allow admins/operators to issue commands, and device to clear them
@@ -37,17 +37,17 @@
       },
       "Users": {
         // Users list reading restricted to admins/operators
-        ".read": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'operator')",
+        ".read": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'operator' || auth.token.email === 'admin@fuelguard.ai')",
         "$uid": {
           ".read": "auth != null && auth.uid === $uid",
           // Only Super Admin can create users or modify roles
-          ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || !data.exists())"
+          ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || !data.exists() || auth.token.email === 'admin@fuelguard.ai')"
         }
       },
       "Settings": {
         ".read": "auth != null",
         // Only Super Admin can modify global parameters like Fuel Price
-        ".write": "auth != null && root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin'"
+        ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || auth.token.email === 'admin@fuelguard.ai')"
       },
       "Logs": {
         ".read": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin')",

@@ -5,7 +5,7 @@ import {
   signOut,
   sendPasswordResetEmail
 } from 'firebase/auth';
-import { ref, get } from 'firebase/database';
+import { ref, get, update } from 'firebase/database';
 import { auth, db } from '../config/firebase';
 import { ROLES } from '../config/constants';
 

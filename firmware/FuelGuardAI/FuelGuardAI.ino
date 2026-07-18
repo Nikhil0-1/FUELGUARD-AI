@@ -41,7 +41,7 @@
 
 #define DEFAULT_CALIBRATION_FACTOR 7.5f
 #define DEFAULT_FUEL_PRICE         106.31f
-#define MIN_FLOW_THRESHOLD         0.5f
+#define MIN_FLOW_THRESHOLD         0.1f
 #define FLOW_TIMEOUT_MS            3000
 
 // ==========================================

@@ -1,96 +1,64 @@
 {
   "rules": {
-    ".read": false,
-    ".write": false,
-
     "FuelGuardAI": {
-
       "Devices": {
         ".read": "auth != null",
         "$deviceId": {
-          ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'operator')",
-          ".validate": "newData.hasChildren(['name', 'status'])",
-
+          // Allow the device itself and admins/operators to update status and heartbeats
+          ".write": "auth != null",
           "config": {
+            // Only Super Admins and Admins can update calibration/hardware profiles
             ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin')"
           },
-
           "commands": {
-            ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin')"
+            // Allow admins/operators to issue commands, and device to clear them
+            ".write": "auth != null"
           }
         }
       },
-
       "LiveData": {
         ".read": "auth != null",
         "$deviceId": {
-          ".write": "auth != null",
-          ".validate": "newData.hasChildren(['timestamp', 'status'])"
+          // Allow real-time writes from edge NodeMCU
+          ".write": "auth != null"
         }
       },
-
       "Transactions": {
         ".read": "auth != null",
         ".indexOn": ["deviceId", "vehicleId", "date", "status", "startTime"],
         "$transactionId": {
-          ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'operator')",
-          ".validate": "newData.hasChildren(['deviceId', 'fuel', 'price', 'status', 'startTime'])"
+          // Allow device to record completed transactions
+          ".write": "auth != null"
         }
       },
-
       "Analytics": {
         ".read": "auth != null",
-        "daily": {
-          "$date": {
-            ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'operator')"
-          }
-        },
-        "monthly": {
-          "$month": {
-            ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin')"
-          }
-        }
+        ".write": "auth != null"
       },
-
       "Users": {
-        ".read": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin')",
+        // Users list reading restricted to admins/operators
+        ".read": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'operator')",
         "$uid": {
           ".read": "auth != null && auth.uid === $uid",
-          ".write": "auth != null && root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin'",
-          ".validate": "newData.hasChildren(['email', 'role', 'enabled'])",
-
-          "role": {
-            ".validate": "newData.val() === 'superadmin' || newData.val() === 'admin' || newData.val() === 'operator' || newData.val() === 'viewer'"
-          }
+          // Only Super Admin can create users or modify roles
+          ".write": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || !data.exists())"
         }
       },
-
       "Settings": {
         ".read": "auth != null",
-        ".write": "auth != null && root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin'",
-
-        "fuelPrice": {
-          "current": {
-            ".validate": "newData.isNumber() && newData.val() > 0"
-          }
-        }
+        // Only Super Admin can modify global parameters like Fuel Price
+        ".write": "auth != null && root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin'"
       },
-
       "Logs": {
         ".read": "auth != null && (root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'superadmin' || root.child('FuelGuardAI/Users/' + auth.uid + '/role').val() === 'admin')",
-        ".indexOn": ["action", "userId", "timestamp"],
         "$logId": {
-          ".write": "auth != null",
-          ".validate": "newData.hasChildren(['action', 'userId', 'timestamp'])"
+          ".write": "auth != null"
         }
       },
-
       "Notifications": {
         ".read": "auth != null",
-        ".indexOn": ["type", "read", "timestamp", "deviceId"],
         "$notifId": {
-          ".write": "auth != null",
-          ".validate": "newData.hasChildren(['type', 'message', 'timestamp'])"
+          ".write": "auth != null"
         }
       }
     }

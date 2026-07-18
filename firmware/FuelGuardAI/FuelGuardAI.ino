@@ -533,26 +533,32 @@ void setup() {
     // Initialize Firebase client (Classic Overloads) - Defer if not connected to prevent boot hang
     if (WiFi.status() == WL_CONNECTED) {
         printLcdLine(1, "Init Firebase...");
+        Serial.println(F("[Boot] Initializing Firebase..."));
+        
         fbConfig.host = FIREBASE_DATABASE_URL;
         fbConfig.api_key = FIREBASE_API_KEY;
         fbAuth.user.email = FIREBASE_USER_EMAIL;
         fbAuth.user.password = FIREBASE_USER_PASSWORD;
         
         Firebase.begin(&fbConfig, &fbAuth);
-        Firebase.reconnectWiFi(true);
+        // Removed Firebase.reconnectWiFi(true) to prevent SSL/Task collision
         firebaseInitialized = true;
+        Serial.println(F("[Boot] Firebase initialized successfully."));
         delay(500);
     } else {
         printLcdLine(1, "Offline Mode    ");
+        Serial.println(F("[Boot] WiFi not connected. Operating in offline mode."));
         firebaseInitialized = false;
         delay(1000);
     }
 
     // Initial OTA configuration parameters
     printLcdLine(1, "Starting OTA... ");
+    Serial.println(F("[Boot] Initializing ArduinoOTA..."));
     ArduinoOTA.setHostname(deviceId.c_str());
     ArduinoOTA.setPassword("FuelGuardOTA99");
     ArduinoOTA.begin();
+    Serial.println(F("[Boot] ArduinoOTA initialized successfully."));
     delay(500);
 
     printLcdLine(1, "System Ready!   ");
@@ -577,7 +583,7 @@ void loop() {
         fbAuth.user.password = FIREBASE_USER_PASSWORD;
         
         Firebase.begin(&fbConfig, &fbAuth);
-        Firebase.reconnectWiFi(true);
+        // Removed Firebase.reconnectWiFi(true) to avoid SSL core loops conflict
         firebaseInitialized = true;
         Serial.println(F("[Firebase] Client deferred initialization completed."));
     }

@@ -14,7 +14,7 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
-#include <ArduinoOTA.h>
+// #include <ArduinoOTA.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <LittleFS.h>
@@ -531,12 +531,12 @@ void setup() {
     delay(500);
 
     // Initial OTA configuration parameters
-    printLcdLine(1, "Starting OTA... ");
-    Serial.println(F("[Boot] Initializing ArduinoOTA..."));
-    ArduinoOTA.setHostname(deviceId.c_str());
-    ArduinoOTA.setPassword("FuelGuardOTA99");
-    ArduinoOTA.begin();
-    Serial.println(F("[Boot] ArduinoOTA initialized successfully."));
+    // printLcdLine(1, "Starting OTA... ");
+    // Serial.println(F("[Boot] Initializing ArduinoOTA..."));
+    // ArduinoOTA.setHostname(deviceId.c_str());
+    // ArduinoOTA.setPassword("FuelGuardOTA99");
+    // ArduinoOTA.begin();
+    // Serial.println(F("[Boot] ArduinoOTA initialized successfully."));
     delay(500);
 
     printLcdLine(1, "System Ready!   ");
@@ -549,13 +549,14 @@ void loop() {
     unsigned long now = millis();
 
     // Process OTA packets in background
-    ArduinoOTA.handle();
+    // ArduinoOTA.handle();
 
     bool isConnected = (WiFi.status() == WL_CONNECTED);
 
     // Defer Firebase initialization inside loop until WiFi is active and NTP time is synchronized
     if (isConnected && time(nullptr) > 1700000000 && !firebaseInitialized) {
         Serial.println(F("[Firebase] WiFi active and NTP synced. Initializing Firebase..."));
+        Serial.printf("[System] Free heap before Firebase init: %d bytes\n", ESP.getFreeHeap());
         
         fbConfig.host = FIREBASE_DATABASE_URL;
         fbConfig.api_key = FIREBASE_API_KEY;
@@ -565,6 +566,7 @@ void loop() {
         Firebase.begin(&fbConfig, &fbAuth);
         firebaseInitialized = true;
         Serial.println(F("[Firebase] Client initialization completed."));
+        Serial.printf("[System] Free heap after Firebase init: %d bytes\n", ESP.getFreeHeap());
     }
 
     bool isFbReady = firebaseInitialized && Firebase.ready();

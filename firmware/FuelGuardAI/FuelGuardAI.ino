@@ -117,6 +117,7 @@ unsigned long lastFlowDetectedTime = 0;
 
 uint8_t lcdActiveScreen = 0;
 bool isCalibrationMode = false;
+bool firebaseInitialized = false;
 bool firebaseReady = false;
 bool deviceLocked = false;
 unsigned long lastTheftAlertTime = 0;
@@ -529,16 +530,23 @@ void setup() {
     configTime(19800, 0, "pool.ntp.org", "time.nist.gov");
     delay(500);
 
-    // Initialize Firebase client (Classic Overloads)
-    printLcdLine(1, "Init Firebase...");
-    fbConfig.host = FIREBASE_DATABASE_URL;
-    fbConfig.api_key = FIREBASE_API_KEY;
-    fbAuth.user.email = FIREBASE_USER_EMAIL;
-    fbAuth.user.password = FIREBASE_USER_PASSWORD;
-    
-    Firebase.begin(&fbConfig, &fbAuth);
-    Firebase.reconnectWiFi(true);
-    delay(500);
+    // Initialize Firebase client (Classic Overloads) - Defer if not connected to prevent boot hang
+    if (WiFi.status() == WL_CONNECTED) {
+        printLcdLine(1, "Init Firebase...");
+        fbConfig.host = FIREBASE_DATABASE_URL;
+        fbConfig.api_key = FIREBASE_API_KEY;
+        fbAuth.user.email = FIREBASE_USER_EMAIL;
+        fbAuth.user.password = FIREBASE_USER_PASSWORD;
+        
+        Firebase.begin(&fbConfig, &fbAuth);
+        Firebase.reconnectWiFi(true);
+        firebaseInitialized = true;
+        delay(500);
+    } else {
+        printLcdLine(1, "Offline Mode    ");
+        firebaseInitialized = false;
+        delay(1000);
+    }
 
     // Initial OTA configuration parameters
     printLcdLine(1, "Starting OTA... ");
@@ -560,7 +568,21 @@ void loop() {
     ArduinoOTA.handle();
 
     bool isConnected = (WiFi.status() == WL_CONNECTED);
-    bool isFbReady = Firebase.ready();
+
+    // Defer Firebase initialization inside loop until WiFi is active
+    if (isConnected && !firebaseInitialized) {
+        fbConfig.host = FIREBASE_DATABASE_URL;
+        fbConfig.api_key = FIREBASE_API_KEY;
+        fbAuth.user.email = FIREBASE_USER_EMAIL;
+        fbAuth.user.password = FIREBASE_USER_PASSWORD;
+        
+        Firebase.begin(&fbConfig, &fbAuth);
+        Firebase.reconnectWiFi(true);
+        firebaseInitialized = true;
+        Serial.println(F("[Firebase] Client deferred initialization completed."));
+    }
+
+    bool isFbReady = firebaseInitialized && Firebase.ready();
 
     if (isFbReady != firebaseReady) {
         firebaseReady = isFbReady;

@@ -28,7 +28,7 @@
 #define WIFI_PASSWORD       "22558800"
 
 // Custom Hardware Device ID to match Web Dashboard (leave as "" to auto-use ESP Chip ID)
-#define HARDWARE_DEVICE_ID  ""
+#define HARDWARE_DEVICE_ID  "DEVICE_14445116"
 
 #define FIREBASE_DATABASE_URL "https://fuelguard-ai-default-rtdb.firebaseio.com"
 
@@ -294,23 +294,13 @@ void refreshLcdDisplay(DisplayStatus status) {
             break;
 
         case STATUS_FILLING:
-            if (lcdActiveScreen == 0) {
-                snprintf(l1, 17, "Fuel: %6.2f L ", sessionLitres);
-                snprintf(l2, 17, "Price: \x08%7.2f", sessionCost);
-            } else {
-                snprintf(l1, 17, "Flow: %5.2f L/m ", currentFlowRate);
-                snprintf(l2, 17, "Status: Filling ");
-            }
+            snprintf(l1, 17, "Fuel:  %6.2f L ", sessionLitres);
+            snprintf(l2, 17, "Cost:  \x08%6.2f ", sessionCost);
             break;
 
         case STATUS_COMPLETED:
-            if (lcdActiveScreen == 0) {
-                snprintf(l1, 17, "Fuel: %6.2f L ", sessionLitres);
-                snprintf(l2, 17, "Total: \x08%7.2f", sessionCost);
-            } else {
-                snprintf(l1, 17, "Status: Finished");
-                snprintf(l2, 17, "Thank You       ");
-            }
+            snprintf(l1, 17, "Fuel:  %6.2f L ", sessionLitres);
+            snprintf(l2, 17, "Total: \x08%6.2f ", sessionCost);
             break;
 
         case STATUS_THEFT_ALERT:
@@ -320,7 +310,7 @@ void refreshLcdDisplay(DisplayStatus status) {
 
         case STATUS_WAITING:
         default:
-            snprintf(l1, 17, "FuelGuard AI    ");
+            snprintf(l1, 17, "FuelGuard Station");
             snprintf(l2, 17, "Status: Ready   ");
             break;
     }
@@ -598,8 +588,8 @@ void loop() {
         firebaseReady = isConnected;
     }
 
-    // 1. Core Flow Rate computations & State Machine logic
-    if (now - lastSensorRead >= 500) {
+    // 1. Core Flow Rate computations & State Machine logic (Every 200ms for ultra-fast sensor readings)
+    if (now - lastSensorRead >= 200) {
         lastSensorRead = now;
 
         // Atomically copy pulseCount
@@ -608,7 +598,7 @@ void loop() {
         pulseCount = 0;
         interrupts();
 
-        float durationSeconds = 0.5f; // read window is 500ms
+        float durationSeconds = 0.2f; // read window is 200ms
         float rawFlowRate = (pulses / activeCalibrationFactor) / durationSeconds;
 
         // Simple noise threshold logic
@@ -686,14 +676,15 @@ void loop() {
         }
     }
 
-    // 2. Rotate screens every 3 seconds
+    // 2. Rotate screens every 3 seconds (Only when waiting/idle)
     if (now - lastLcdRotate >= 3000) {
         lastLcdRotate = now;
         lcdActiveScreen = (lcdActiveScreen + 1) % 2;
     }
 
-    // 3. LCD screen redraw loops
-    if (now - lastDisplayRefresh >= 500) {
+    // 3. LCD screen redraw loops (Every 200ms during filling for fast update)
+    unsigned int lcdRefreshInterval = (systemState == STATE_FILLING) ? 200 : 500;
+    if (now - lastDisplayRefresh >= lcdRefreshInterval) {
         lastDisplayRefresh = now;
 
         DisplayStatus screenStatus = STATUS_WAITING;
@@ -703,9 +694,7 @@ void loop() {
             screenStatus = STATUS_CLOUD_OFFLINE;
         } else if (deviceLocked && currentFlowRate >= MIN_FLOW_THRESHOLD) {
             screenStatus = STATUS_THEFT_ALERT;
-        } else if (systemState == STATE_FILLING) {
-            screenStatus = STATUS_FILLING;
-        } else if (systemState == STATE_COMPLETING) {
+        } else if (systemState == STATE_FILLING || systemState == STATE_COMPLETING) {
             screenStatus = STATUS_FILLING;
         }
 
@@ -718,8 +707,8 @@ void loop() {
         checkRemoteCommands();
     }
 
-    // 5. Firebase live telemetry pushes
-    unsigned long pushInterval = (systemState == STATE_FILLING) ? 1000 : 3000;
+    // 5. Firebase live telemetry pushes (Every 300ms during filling for instant dashboard sync)
+    unsigned long pushInterval = (systemState == STATE_FILLING) ? 300 : 3000;
     if (now - lastFirebasePush >= pushInterval) {
         lastFirebasePush = now;
         pushLiveReadings();

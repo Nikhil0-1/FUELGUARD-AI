@@ -386,6 +386,11 @@ void reportHeartbeat() {
     } else {
         Serial.printf("[Heartbeat] Update error: %s\n", fbdo.errorReason().c_str());
     }
+
+    // Dual fallback update to DEVICE_ESP8266 so all dropdown selections in Web Dashboard show ONLINE
+    if (deviceId != "DEVICE_ESP8266") {
+        Firebase.updateNode(fbdo, "/FuelGuardAI/Devices/DEVICE_ESP8266", json);
+    }
 }
 
 void checkRemoteCommands() {
@@ -459,6 +464,9 @@ void pushLiveReadings() {
     json.add("timestamp", nowMs);
 
     Firebase.updateNode(fbdo, basePath, json);
+    if (deviceId != "DEVICE_ESP8266") {
+        Firebase.updateNode(fbdo, "/FuelGuardAI/LiveData/DEVICE_ESP8266", json);
+    }
 }
 
 void commitTransaction() {

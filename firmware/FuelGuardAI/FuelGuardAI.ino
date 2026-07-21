@@ -29,11 +29,12 @@
 #define WIFI_SSID           "Test"
 #define WIFI_PASSWORD       "22558800"
 
-// Custom Hardware Device ID to match Web Dashboard (leave as "" to use ESP Chip ID)
-#define HARDWARE_DEVICE_ID  "DEVICE_ESP8266"
+// Custom Hardware Device ID to match Web Dashboard (leave as "" to auto-use ESP Chip ID)
+#define HARDWARE_DEVICE_ID  ""
 
 #define FIREBASE_API_KEY    "AIzaSyDjFNRqEMZT1E7igssIx8g1I2hUG5G-Hdg"
-#define FIREBASE_DATABASE_URL "fuelguard-ai-default-rtdb.firebaseio.com"
+#define FIREBASE_HOST       "fuelguard-ai-default-rtdb.firebaseio.com"
+#define FIREBASE_DATABASE_URL "https://fuelguard-ai-default-rtdb.firebaseio.com"
 #define FIREBASE_USER_EMAIL "device@fuelguard.ai"
 #define FIREBASE_USER_PASSWORD "SecureDevicePassword123"
 
@@ -586,14 +587,15 @@ void loop() {
         Serial.println(F("[Firebase] WiFi active. Initializing Firebase client..."));
         Serial.printf("[System] Free heap before Firebase init: %d bytes\n", ESP.getFreeHeap());
         
-        fbConfig.host = FIREBASE_DATABASE_URL;
+        fbConfig.host = FIREBASE_HOST;
+        fbConfig.database_url = FIREBASE_DATABASE_URL;
         fbConfig.api_key = FIREBASE_API_KEY;
         fbConfig.signer.tokens.legacy_token = "";
         
         Firebase.begin(&fbConfig, nullptr);
         Firebase.reconnectWiFi(true);
         firebaseInitialized = true;
-        Serial.println(F("[Firebase] Client initialization completed."));
+        Serial.println(F("[Firebase] Client initialization completed successfully."));
         Serial.printf("[System] Free heap after Firebase init: %d bytes\n", ESP.getFreeHeap());
     }
 

@@ -367,13 +367,24 @@ void reportHeartbeat() {
     if (!firebaseReady) return;
     String basePath = "/FuelGuardAI/Devices/" + deviceId;
     double nowMs = (double)getEpochTime() * 1000.0;
-    Firebase.setString(fbdo, basePath + "/name", "FuelGuard Station");
-    Firebase.setString(fbdo, basePath + "/status", "online");
-    Firebase.setInt(fbdo, basePath + "/wifiStrength", WiFi.RSSI());
-    Firebase.setDouble(fbdo, basePath + "/lastSeen", nowMs);
-    Firebase.setFloat(fbdo, basePath + "/calibrationFactor", activeCalibrationFactor);
-    Firebase.setBool(fbdo, basePath + "/lockStatus", deviceLocked);
-    Firebase.setString(fbdo, basePath + "/firmwareVersion", "1.0.0");
+    if (nowMs < 100000000000.0) {
+        nowMs = (double)millis();
+    }
+    
+    FirebaseJson json;
+    json.add("name", "Nikhil Node");
+    json.add("status", "online");
+    json.add("wifiStrength", WiFi.RSSI());
+    json.add("lastSeen", nowMs);
+    json.add("calibrationFactor", activeCalibrationFactor);
+    json.add("lockStatus", deviceLocked);
+    json.add("firmwareVersion", "1.0.0");
+    
+    if (Firebase.updateNode(fbdo, basePath, json)) {
+        Serial.println(F("[Heartbeat] Signal sent successfully (ONLINE)"));
+    } else {
+        Serial.printf("[Heartbeat] Update error: %s\n", fbdo.errorReason().c_str());
+    }
 }
 
 void checkRemoteCommands() {
@@ -434,12 +445,19 @@ void pushLiveReadings() {
     if (!firebaseReady) return;
     String basePath = "/FuelGuardAI/LiveData/" + deviceId;
     double nowMs = (double)getEpochTime() * 1000.0;
-    Firebase.setFloat(fbdo, basePath + "/flowRate", currentFlowRate);
-    Firebase.setFloat(fbdo, basePath + "/totalLitres", sessionLitres);
-    Firebase.setFloat(fbdo, basePath + "/fuelCost", sessionCost);
-    Firebase.setInt(fbdo, basePath + "/pulseCount", sessionPulses);
-    Firebase.setString(fbdo, basePath + "/status", (systemState == STATE_FILLING ? "Filling" : "Waiting"));
-    Firebase.setDouble(fbdo, basePath + "/timestamp", nowMs);
+    if (nowMs < 100000000000.0) {
+        nowMs = (double)millis();
+    }
+    
+    FirebaseJson json;
+    json.add("flowRate", currentFlowRate);
+    json.add("totalLitres", sessionLitres);
+    json.add("fuelCost", sessionCost);
+    json.add("pulseCount", sessionPulses);
+    json.add("status", (systemState == STATE_FILLING ? "Filling" : "Waiting"));
+    json.add("timestamp", nowMs);
+
+    Firebase.updateNode(fbdo, basePath, json);
 }
 
 void commitTransaction() {

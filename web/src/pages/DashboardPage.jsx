@@ -28,10 +28,17 @@ export default function DashboardPage() {
   };
   const activeDeviceDetails = devices[activeDeviceId] || { name: 'No Configured Node' };
 
-  // Calculate dynamic online state based on heartbeat within 45 seconds
-  const rawLastSeen = activeDeviceDetails.lastSeen || currentLive.timestamp || 0;
+  // Calculate dynamic online state based on device status & heartbeat timestamp window
+  const rawLastSeen = activeDeviceDetails.lastSeen || 0;
   const lastSeenMs = rawLastSeen < 1e11 ? rawLastSeen * 1000 : rawLastSeen;
-  const isHardwareOnline = lastSeenMs > 0 && (Date.now() - lastSeenMs < 45000);
+  
+  const rawLiveTs = currentLive.timestamp || 0;
+  const liveTsMs = rawLiveTs < 1e11 ? rawLiveTs * 1000 : rawLiveTs;
+
+  const isHardwareOnline = 
+    activeDeviceDetails.status === 'online' ||
+    (lastSeenMs > 0 && Math.abs(Date.now() - lastSeenMs) < 120000) ||
+    (liveTsMs > 0 && Math.abs(Date.now() - liveTsMs) < 120000);
 
   const displayStatus = activeDeviceDetails.lockStatus 
     ? 'Locked' 

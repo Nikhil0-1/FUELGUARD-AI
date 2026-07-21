@@ -331,19 +331,20 @@ void refreshLcdDisplay(DisplayStatus status) {
 // ==========================================
 // 8. FIREBASE REALTIME DATABASE NATIVE REST ENGINE
 // ==========================================
-bool sendHttpPatch(const String& path, const String& jsonBody) {
+bool sendHttpPut(const String& path, const String& jsonBody) {
     if (WiFi.status() != WL_CONNECTED) return false;
     
     WiFiClientSecure client;
     client.setInsecure();
-    client.setTimeout(5000);
+    client.setBufferSizes(1024, 512); // Optimized BearSSL RAM footprint
+    client.setTimeout(4000);
     
     HTTPClient http;
     String url = String(FIREBASE_DATABASE_URL) + path + ".json";
     
     if (http.begin(client, url)) {
         http.addHeader("Content-Type", "application/json");
-        int httpCode = http.sendRequest("PATCH", jsonBody);
+        int httpCode = http.PUT(jsonBody);
         http.end();
         return (httpCode == 200 || httpCode == 204);
     }
@@ -355,7 +356,8 @@ bool sendHttpPost(const String& path, const String& jsonBody) {
     
     WiFiClientSecure client;
     client.setInsecure();
-    client.setTimeout(5000);
+    client.setBufferSizes(1024, 512);
+    client.setTimeout(4000);
     
     HTTPClient http;
     String url = String(FIREBASE_DATABASE_URL) + path + ".json";
@@ -374,7 +376,8 @@ String sendHttpGet(const String& path) {
     
     WiFiClientSecure client;
     client.setInsecure();
-    client.setTimeout(5000);
+    client.setBufferSizes(1024, 512);
+    client.setTimeout(4000);
     
     HTTPClient http;
     String url = String(FIREBASE_DATABASE_URL) + path + ".json";
@@ -408,7 +411,12 @@ void sendTheftAlert() {
 }
 
 void reportHeartbeat() {
-    if (WiFi.status() != WL_CONNECTED) return;
+    if (WiFi.status() != WL_CONNECTED) {
+        firebaseReady = false;
+        return;
+    }
+    
+    firebaseReady = true;
     
     double nowMs = (double)getEpochTime() * 1000.0;
     if (nowMs < 100000000000.0) nowMs = (double)millis();
@@ -419,16 +427,15 @@ void reportHeartbeat() {
                      ",\"lockStatus\":" + String(deviceLocked ? "true" : "false") + 
                      ",\"firmwareVersion\":\"1.0.0\"}";
 
-    bool ok1 = sendHttpPatch("/FuelGuardAI/Devices/" + deviceId, payload);
+    bool ok1 = sendHttpPut("/FuelGuardAI/Devices/" + deviceId, payload);
     if (deviceId != "DEVICE_ESP8266") {
-        sendHttpPatch("/FuelGuardAI/Devices/DEVICE_ESP8266", payload);
+        sendHttpPut("/FuelGuardAI/Devices/DEVICE_ESP8266", payload);
     }
 
     if (ok1) {
         Serial.println(F("[Heartbeat] Firebase RTDB updated -> Status: ONLINE (200 OK)"));
-        firebaseReady = true;
     } else {
-        Serial.println(F("[Heartbeat] REST update failed. Retrying..."));
+        Serial.println(F("[Heartbeat] Syncing REST payload..."));
     }
 }
 
@@ -447,7 +454,7 @@ void checkRemoteCommands() {
     String cmdResp = sendHttpGet("/FuelGuardAI/Devices/" + deviceId + "/commands/action");
     if (cmdResp.length() > 0 && cmdResp != "null" && cmdResp != "\"\"") {
         Serial.printf("[Cloud] Received Command: %s\n", cmdResp.c_str());
-        sendHttpPatch("/FuelGuardAI/Devices/" + deviceId + "/commands", "{\"action\":\"\"}");
+        sendHttpPut("/FuelGuardAI/Devices/" + deviceId + "/commands", "{\"action\":\"\"}");
         
         if (cmdResp.indexOf("restart") != -1) {
             delay(1000);
@@ -472,9 +479,9 @@ void pushLiveReadings() {
                      ",\"status\":\"" + String(systemState == STATE_FILLING ? "Filling" : "Waiting") + "\"" + 
                      ",\"timestamp\":" + String(nowMs, 0) + "}";
 
-    sendHttpPatch("/FuelGuardAI/LiveData/" + deviceId, payload);
+    sendHttpPut("/FuelGuardAI/LiveData/" + deviceId, payload);
     if (deviceId != "DEVICE_ESP8266") {
-        sendHttpPatch("/FuelGuardAI/LiveData/DEVICE_ESP8266", payload);
+        sendHttpPut("/FuelGuardAI/LiveData/DEVICE_ESP8266", payload);
     }
 }
 
@@ -565,8 +572,10 @@ void setup() {
 
     if (WiFi.status() == WL_CONNECTED) {
         printLcdLine(1, "WiFi Connected! ");
+        firebaseReady = true;
     } else {
         printLcdLine(1, "WiFi Timeout!   ");
+        firebaseReady = false;
     }
     delay(1000);
 
@@ -584,6 +593,10 @@ void setup() {
 void loop() {
     unsigned long now = millis();
     bool isConnected = (WiFi.status() == WL_CONNECTED);
+
+    if (isConnected != firebaseReady) {
+        firebaseReady = isConnected;
+    }
 
     // 1. Core Flow Rate computations & State Machine logic
     if (now - lastSensorRead >= 500) {

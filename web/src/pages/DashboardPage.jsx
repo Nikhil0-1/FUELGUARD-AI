@@ -28,6 +28,15 @@ export default function DashboardPage() {
   };
   const activeDeviceDetails = devices[activeDeviceId] || { name: 'No Configured Node' };
 
+  // Calculate dynamic online state based on heartbeat within 45 seconds
+  const rawLastSeen = activeDeviceDetails.lastSeen || currentLive.timestamp || 0;
+  const lastSeenMs = rawLastSeen < 1e11 ? rawLastSeen * 1000 : rawLastSeen;
+  const isHardwareOnline = lastSeenMs > 0 && (Date.now() - lastSeenMs < 45000);
+
+  const displayStatus = activeDeviceDetails.lockStatus 
+    ? 'Locked' 
+    : (isHardwareOnline ? (currentLive.status || 'Online') : 'Offline');
+
   const handleToggleLock = async () => {
     if (!activeDeviceId || lockingInProgress) return;
     setLockingInProgress(true);
@@ -65,7 +74,13 @@ export default function DashboardPage() {
       {/* Dashboard Title Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold font-display tracking-tight text-text-primary">Real-time Monitor</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold font-display tracking-tight text-text-primary">Real-time Monitor</h1>
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${isHardwareOnline ? 'bg-success-light text-success border border-success/20' : 'bg-danger-light text-danger border border-danger/20'}`}>
+              <span className={`w-2 h-2 rounded-full ${isHardwareOnline ? 'bg-success animate-ping' : 'bg-danger'}`} />
+              {isHardwareOnline ? 'CLOUD ONLINE' : 'HARDWARE OFFLINE'}
+            </span>
+          </div>
           <p className="text-sm text-text-secondary mt-1">Live telemetry sync from edge YF-S201 sensors</p>
         </div>
 
@@ -80,7 +95,7 @@ export default function DashboardPage() {
             >
               {deviceIds.map(id => (
                 <option key={id} value={id}>
-                  {devices[id].name || id}
+                  {devices[id].name || id} ({id})
                 </option>
               ))}
             </select>
@@ -93,7 +108,7 @@ export default function DashboardPage() {
         <LiveFuelCard value={currentLive.totalLitres} />
         <PriceCard cost={currentLive.fuelCost} />
         <FlowRateCard rate={currentLive.flowRate} />
-        <StatusCard status={activeDeviceDetails.lockStatus ? 'Locked' : currentLive.status} lastUpdated={currentLive.timestamp} />
+        <StatusCard status={displayStatus} lastUpdated={lastSeenMs} />
       </div>
 
       {/* Analytics & Transactions grid layout */}

@@ -8,9 +8,18 @@ export const formatVolume = (value, unit = 'L') => {
   return `${parseFloat(value).toFixed(2)} ${unit}`;
 };
 
+const normalizeTimestamp = (ts) => {
+  if (!ts) return null;
+  const num = Number(ts);
+  if (isNaN(num)) return null;
+  // If timestamp is in seconds (< 100 billion), convert to milliseconds
+  return num < 1e11 ? num * 1000 : num;
+};
+
 export const formatDate = (timestamp) => {
-  if (!timestamp) return '—';
-  const date = new Date(timestamp);
+  const tsMs = normalizeTimestamp(timestamp);
+  if (!tsMs) return '—';
+  const date = new Date(tsMs);
   return date.toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
@@ -19,8 +28,9 @@ export const formatDate = (timestamp) => {
 };
 
 export const formatTime = (timestamp) => {
-  if (!timestamp) return '—';
-  const date = new Date(timestamp);
+  const tsMs = normalizeTimestamp(timestamp);
+  if (!tsMs) return '—';
+  const date = new Date(tsMs);
   return date.toLocaleTimeString('en-IN', {
     hour: '2-digit',
     minute: '2-digit',
@@ -29,8 +39,9 @@ export const formatTime = (timestamp) => {
 };
 
 export const formatDateTime = (timestamp) => {
-  if (!timestamp) return '—';
-  return `${formatDate(timestamp)} ${formatTime(timestamp)}`;
+  const tsMs = normalizeTimestamp(timestamp);
+  if (!tsMs) return '—';
+  return `${formatDate(tsMs)} ${formatTime(tsMs)}`;
 };
 
 export const formatDuration = (seconds) => {

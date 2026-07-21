@@ -691,22 +691,26 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.entries(devices).map(([id, dev]) => (
-                      <tr key={id} className="table-row">
-                        <td className="table-cell font-mono text-xs">{id}</td>
-                        <td className="table-cell font-semibold">{dev.name}</td>
-                        <td className="table-cell">{dev.location}</td>
-                        <td className="table-cell">
-                          <div className="flex flex-col gap-0.5 text-xs text-text-secondary">
-                            <span>FW: {dev.firmwareVersion || '1.0.0'}</span>
-                            <span className="flex items-center gap-1">
-                              <RiWifiLine /> {dev.wifiStrength || 0} dBm
-                            </span>
-                          </div>
-                        </td>
-                        <td className="table-cell">
-                          <StatusBadge status={dev.status} />
-                        </td>
+                    {Object.entries(devices).map(([id, dev]) => {
+                      const rawTs = dev.lastSeen || 0;
+                      const tsMs = rawTs < 1e11 ? rawTs * 1000 : rawTs;
+                      const isDevOnline = tsMs > 0 ? (Date.now() - tsMs < 45000) : (dev.status === 'online');
+                      return (
+                        <tr key={id} className="table-row">
+                          <td className="table-cell font-mono text-xs font-bold text-luxury-gold">{id}</td>
+                          <td className="table-cell font-semibold">{dev.name}</td>
+                          <td className="table-cell">{dev.location}</td>
+                          <td className="table-cell">
+                            <div className="flex flex-col gap-0.5 text-xs text-text-secondary">
+                              <span>FW: {dev.firmwareVersion || '1.0.0'}</span>
+                              <span className="flex items-center gap-1">
+                                <RiWifiLine /> {dev.wifiStrength || 0} dBm
+                              </span>
+                            </div>
+                          </td>
+                          <td className="table-cell">
+                            <StatusBadge status={isDevOnline ? 'online' : 'offline'} />
+                          </td>
                         <td className="table-cell">
                           <div className="flex gap-2">
                             <button
@@ -726,7 +730,8 @@ export default function AdminPage() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    );
+                  })}
                   </tbody>
                 </table>
               </div>

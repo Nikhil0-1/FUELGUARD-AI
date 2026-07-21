@@ -29,6 +29,9 @@
 #define WIFI_SSID           "Test"
 #define WIFI_PASSWORD       "22558800"
 
+// Custom Hardware Device ID to match Web Dashboard (leave as "" to use ESP Chip ID)
+#define HARDWARE_DEVICE_ID  "DEVICE_ESP8266"
+
 #define FIREBASE_API_KEY    "AIzaSyDjFNRqEMZT1E7igssIx8g1I2hUG5G-Hdg"
 #define FIREBASE_DATABASE_URL "fuelguard-ai-default-rtdb.firebaseio.com"
 #define FIREBASE_USER_EMAIL "device@fuelguard.ai"
@@ -363,12 +366,14 @@ void sendTheftAlert() {
 void reportHeartbeat() {
     if (!firebaseReady) return;
     String basePath = "/FuelGuardAI/Devices/" + deviceId;
-    Firebase.setString(fbdo, basePath + "/name", "FuelGuard Node");
+    double nowMs = (double)getEpochTime() * 1000.0;
+    Firebase.setString(fbdo, basePath + "/name", "FuelGuard Station");
     Firebase.setString(fbdo, basePath + "/status", "online");
     Firebase.setInt(fbdo, basePath + "/wifiStrength", WiFi.RSSI());
-    Firebase.setInt(fbdo, basePath + "/lastSeen", getEpochTime());
+    Firebase.setDouble(fbdo, basePath + "/lastSeen", nowMs);
     Firebase.setFloat(fbdo, basePath + "/calibrationFactor", activeCalibrationFactor);
     Firebase.setBool(fbdo, basePath + "/lockStatus", deviceLocked);
+    Firebase.setString(fbdo, basePath + "/firmwareVersion", "1.0.0");
 }
 
 void checkRemoteCommands() {
@@ -428,12 +433,13 @@ void checkRemoteCommands() {
 void pushLiveReadings() {
     if (!firebaseReady) return;
     String basePath = "/FuelGuardAI/LiveData/" + deviceId;
+    double nowMs = (double)getEpochTime() * 1000.0;
     Firebase.setFloat(fbdo, basePath + "/flowRate", currentFlowRate);
     Firebase.setFloat(fbdo, basePath + "/totalLitres", sessionLitres);
     Firebase.setFloat(fbdo, basePath + "/fuelCost", sessionCost);
     Firebase.setInt(fbdo, basePath + "/pulseCount", sessionPulses);
     Firebase.setString(fbdo, basePath + "/status", (systemState == STATE_FILLING ? "Filling" : "Waiting"));
-    Firebase.setInt(fbdo, basePath + "/timestamp", getEpochTime());
+    Firebase.setDouble(fbdo, basePath + "/timestamp", nowMs);
 }
 
 void commitTransaction() {
@@ -473,8 +479,12 @@ void setup() {
     Serial.begin(115200);
     delay(500);
 
-    deviceId = "DEVICE_" + String(ESP.getChipId());
-    Serial.printf("\n[Boot] Device ID generated: %s\n", deviceId.c_str());
+    if (String(HARDWARE_DEVICE_ID).length() > 0) {
+        deviceId = HARDWARE_DEVICE_ID;
+    } else {
+        deviceId = "DEVICE_" + String(ESP.getChipId());
+    }
+    Serial.printf("\n[Boot] Device ID initialized: %s\n", deviceId.c_str());
 
     // Customized I2C on Pins D3 (SDA), D4 (SCL)
     Wire.begin(LCD_SDA_PIN, LCD_SCL_PIN);
@@ -553,21 +563,19 @@ void loop() {
 
     bool isConnected = (WiFi.status() == WL_CONNECTED);
 
-    // Defer Firebase initialization inside loop until WiFi is active and NTP time is synchronized
-    if (isConnected && time(nullptr) > 1700000000 && !firebaseInitialized) {
-        Serial.println(F("[Firebase] WiFi active and NTP synced. Initializing Firebase..."));
+    // Initialize Firebase as soon as WiFi is connected
+    if (isConnected && !firebaseInitialized) {
+        Serial.println(F("[Firebase] WiFi active. Initializing Firebase client..."));
         Serial.printf("[System] Free heap before Firebase init: %d bytes\n", ESP.getFreeHeap());
         
         fbConfig.host = FIREBASE_DATABASE_URL;
         fbConfig.api_key = FIREBASE_API_KEY;
-        
-        // Disable email/password auth to save heap RAM and bypass SSL handshake failures
-        // fbAuth.user.email = FIREBASE_USER_EMAIL;
-        // fbAuth.user.password = FIREBASE_USER_PASSWORD;
+        fbConfig.signer.tokens.legacy_token = "";
         
         Firebase.begin(&fbConfig, nullptr);
+        Firebase.reconnectWiFi(true);
         firebaseInitialized = true;
-        Serial.println(F("[Firebase] Client initialization completed (No-Auth Mode)."));
+        Serial.println(F("[Firebase] Client initialization completed."));
         Serial.printf("[System] Free heap after Firebase init: %d bytes\n", ESP.getFreeHeap());
     }
 
@@ -712,8 +720,8 @@ void loop() {
         pushLiveReadings();
     }
 
-    // 6. WiFi Connection checking watchdog (Every 30 seconds)
-    if (now - lastWifiCheck >= 30000) {
+    // 6. WiFi Connection checking watchdog & Heartbeat (Every 5 seconds)
+    if (now - lastWifiCheck >= 5000) {
         lastWifiCheck = now;
         if (!isConnected) {
             Serial.println(F("[WiFi] Network Connection lost. Reconnecting..."));

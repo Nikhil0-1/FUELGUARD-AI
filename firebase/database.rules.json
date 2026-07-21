@@ -1,60 +1,6 @@
 {
   "rules": {
-    "FuelGuardAI": {
-      "Devices": {
-        ".read": "true",
-        "$deviceId": {
-          ".write": "true",
-          "config": {
-            ".read": "true",
-            ".write": "true"
-          },
-          "commands": {
-            ".read": "true",
-            ".write": "true"
-          }
-        }
-      },
-      "LiveData": {
-        ".read": "true",
-        "$deviceId": {
-          ".write": "true"
-        }
-      },
-      "Transactions": {
-        ".read": "true",
-        ".indexOn": ["deviceId", "vehicleId", "date", "status", "startTime"],
-        "$transactionId": {
-          ".write": "true"
-        }
-      },
-      "Analytics": {
-        ".read": "true",
-        ".write": "true"
-      },
-      "Users": {
-        ".read": "true",
-        "$uid": {
-          ".read": "true",
-          ".write": "true"
-        }
-      },
-      "Settings": {
-        ".read": "true",
-        ".write": "true"
-      },
-      "Logs": {
-        ".read": "true",
-        "$logId": {
-          ".write": "true"
-        }
-      },
-      "Notifications": {
-        ".read": "true",
-        "$notifId": {
-          ".write": "true"
-        }
-      }
-    }
+    ".read": "true",
+    ".write": "true"
   }
 }

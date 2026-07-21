@@ -12,6 +12,10 @@ const normalizeTimestamp = (ts) => {
   if (!ts) return null;
   const num = Number(ts);
   if (isNaN(num)) return null;
+  // If timestamp is less than Year 2001 (1,000,000,000 seconds), it's a boot-time fallback, use current client time
+  if (num < 1000000000) {
+    return Date.now();
+  }
   // If timestamp is in seconds (< 100 billion), convert to milliseconds
   return num < 1e11 ? num * 1000 : num;
 };

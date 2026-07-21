@@ -432,15 +432,45 @@ void reportHeartbeat() {
 void checkRemoteCommands() {
     if (WiFi.status() != WL_CONNECTED) return;
     
-    String resp = sendHttpGet("/FuelGuardAI/Devices/" + deviceId + "/config");
+    // Read lockStatus and calibrationFactor from device root node
+    String resp = sendHttpGet("/FuelGuardAI/Devices/" + deviceId);
     if (resp.length() > 0 && resp != "null") {
+        // Parse lockStatus
         if (resp.indexOf("\"lockStatus\":true") != -1) {
             deviceLocked = true;
         } else if (resp.indexOf("\"lockStatus\":false") != -1) {
             deviceLocked = false;
         }
+        
+        // Parse calibrationFactor
+        int calIndex = resp.indexOf("\"calibrationFactor\":");
+        if (calIndex != -1) {
+            int valStart = calIndex + 20;
+            int valEnd = resp.indexOf(",", valStart);
+            if (valEnd == -1) valEnd = resp.indexOf("}", valStart);
+            if (valEnd != -1) {
+                String calStr = resp.substring(valStart, valEnd);
+                float calVal = calStr.toFloat();
+                if (calVal > 0.1f && calVal < 30.0f && calVal != activeCalibrationFactor) {
+                    activeCalibrationFactor = calVal;
+                    saveProfile();
+                    Serial.printf("[Cloud] Calibration Factor updated to: %.2f\n", activeCalibrationFactor);
+                }
+            }
+        }
     }
 
+    // Read Global Fuel Price from Settings
+    String priceResp = sendHttpGet("/FuelGuardAI/Settings/fuelPrice/current");
+    if (priceResp.length() > 0 && priceResp != "null") {
+        float pr = priceResp.toFloat();
+        if (pr > 0.0f && pr != fuelPrice) {
+            fuelPrice = pr;
+            Serial.printf("[Cloud] Fuel Price updated to: %.2f\n", fuelPrice);
+        }
+    }
+
+    // Read Commands
     String cmdResp = sendHttpGet("/FuelGuardAI/Devices/" + deviceId + "/commands/action");
     if (cmdResp.length() > 0 && cmdResp != "null" && cmdResp != "\"\"") {
         Serial.printf("[Cloud] Received Command: %s\n", cmdResp.c_str());

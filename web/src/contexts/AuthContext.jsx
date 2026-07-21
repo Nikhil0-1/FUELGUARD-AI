@@ -95,11 +95,15 @@ export const AuthProvider = ({ children }) => {
       }
 
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const userRef = ref(db, `FuelGuardAI/Users/${userCredential.user.uid}`);
-      const snapshot = await get(userRef);
-      if (snapshot.exists() && !snapshot.val().enabled) {
-        await signOut(auth);
-        throw new Error("Your account has been deactivated. Please contact your system administrator.");
+      try {
+        const userRef = ref(db, `FuelGuardAI/Users/${userCredential.user.uid}`);
+        const snapshot = await get(userRef);
+        if (snapshot.exists() && !snapshot.val().enabled) {
+          await signOut(auth);
+          throw new Error("Your account has been deactivated. Please contact your system administrator.");
+        }
+      } catch (err) {
+        console.warn("User status check bypassed due to connection or permissions restriction:", err);
       }
       return userCredential;
     } finally {

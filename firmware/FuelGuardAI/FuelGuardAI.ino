@@ -12,16 +12,14 @@
 
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
-// #include <ArduinoOTA.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <LittleFS.h>
 #include <time.h>
-
-// Classic FirebaseESP8266 Library (Install "Firebase ESP8266 Client" by Mobizt)
-#include <FirebaseESP8266.h>
 
 // ==========================================
 // 1. HARDWARE & CLOUD CONFIGURATION
@@ -32,11 +30,7 @@
 // Custom Hardware Device ID to match Web Dashboard (leave as "" to auto-use ESP Chip ID)
 #define HARDWARE_DEVICE_ID  ""
 
-#define FIREBASE_API_KEY    "AIzaSyDjFNRqEMZT1E7igssIx8g1I2hUG5G-Hdg"
-#define FIREBASE_HOST       "fuelguard-ai-default-rtdb.firebaseio.com"
 #define FIREBASE_DATABASE_URL "https://fuelguard-ai-default-rtdb.firebaseio.com"
-#define FIREBASE_USER_EMAIL "device@fuelguard.ai"
-#define FIREBASE_USER_PASSWORD "SecureDevicePassword123"
 
 #define SENSOR_PIN          14   // D5 (GPIO14) - Hardware Interrupt Pin
 #define LCD_SDA_PIN         0    // D3 (GPIO0) - Custom I2C SDA
@@ -66,7 +60,6 @@ enum DisplayStatus {
     STATUS_WIFI_LOST,
     STATUS_CLOUD_OFFLINE,
     STATUS_RECONNECTING,
-    STATUS_OTA_UPDATE,
     STATUS_THEFT_ALERT
 };
 
@@ -87,11 +80,6 @@ volatile unsigned long lastPulseTime = 0;
 
 // LCD Driver (16x2)
 LiquidCrystal_I2C lcd(LCD_I2C_ADDRESS, 16, 2);
-
-// Firebase Client Objects
-FirebaseData fbdo;
-FirebaseAuth fbAuth;
-FirebaseConfig fbConfig;
 
 // System Telemetry Variables
 String deviceId;
@@ -121,7 +109,6 @@ unsigned long lastFlowDetectedTime = 0;
 
 uint8_t lcdActiveScreen = 0;
 bool isCalibrationMode = false;
-bool firebaseInitialized = false;
 bool firebaseReady = false;
 bool deviceLocked = false;
 unsigned long lastTheftAlertTime = 0;
@@ -168,7 +155,7 @@ String getFormattedDate() {
     struct tm timeinfo;
     char buffer[12];
     if (!getLocalTime(&timeinfo)) {
-        return "2026-07-16";
+        return "2026-07-21";
     }
     time(&now);
     localtime_r(&now, &timeinfo);
@@ -181,7 +168,7 @@ uint32_t getTodayDateCode() {
     struct tm timeinfo;
     char buffer[9];
     if (!getLocalTime(&timeinfo)) {
-        return 20260716;
+        return 20260721;
     }
     time(&now);
     localtime_r(&now, &timeinfo);
@@ -334,7 +321,7 @@ void refreshLcdDisplay(DisplayStatus status) {
         case STATUS_WAITING:
         default:
             snprintf(l1, 17, "FuelGuard AI    ");
-            snprintf(l2, 17, "Status: Waiting ");
+            snprintf(l2, 17, "Status: Ready   ");
             break;
     }
 
@@ -342,161 +329,182 @@ void refreshLcdDisplay(DisplayStatus status) {
 }
 
 // ==========================================
-// 8. FIREBASE LOGIC & HANDLERS
+// 8. FIREBASE REALTIME DATABASE NATIVE REST ENGINE
 // ==========================================
+bool sendHttpPatch(const String& path, const String& jsonBody) {
+    if (WiFi.status() != WL_CONNECTED) return false;
+    
+    WiFiClientSecure client;
+    client.setInsecure();
+    client.setTimeout(5000);
+    
+    HTTPClient http;
+    String url = String(FIREBASE_DATABASE_URL) + path + ".json";
+    
+    if (http.begin(client, url)) {
+        http.addHeader("Content-Type", "application/json");
+        int httpCode = http.sendRequest("PATCH", jsonBody);
+        http.end();
+        return (httpCode == 200 || httpCode == 204);
+    }
+    return false;
+}
+
+bool sendHttpPost(const String& path, const String& jsonBody) {
+    if (WiFi.status() != WL_CONNECTED) return false;
+    
+    WiFiClientSecure client;
+    client.setInsecure();
+    client.setTimeout(5000);
+    
+    HTTPClient http;
+    String url = String(FIREBASE_DATABASE_URL) + path + ".json";
+    
+    if (http.begin(client, url)) {
+        http.addHeader("Content-Type", "application/json");
+        int httpCode = http.POST(jsonBody);
+        http.end();
+        return (httpCode == 200);
+    }
+    return false;
+}
+
+String sendHttpGet(const String& path) {
+    if (WiFi.status() != WL_CONNECTED) return "";
+    
+    WiFiClientSecure client;
+    client.setInsecure();
+    client.setTimeout(5000);
+    
+    HTTPClient http;
+    String url = String(FIREBASE_DATABASE_URL) + path + ".json";
+    
+    if (http.begin(client, url)) {
+        int httpCode = http.GET();
+        String resp = "";
+        if (httpCode == 200) {
+            resp = http.getString();
+        }
+        http.end();
+        return resp;
+    }
+    return "";
+}
+
 void sendTheftAlert() {
     unsigned long now = millis();
-    if (now - lastTheftAlertTime >= 10000) { // Throttle alerts to once per 10 seconds
+    if (now - lastTheftAlertTime >= 10000) {
         lastTheftAlertTime = now;
         Serial.println(F("[ALERT] CRITICAL: Unauthorized flow detected on locked device!"));
         
-        if (firebaseReady) {
-            FirebaseJson notifJson;
-            notifJson.add("type", "THEFT_ALERT");
-            notifJson.add("deviceId", deviceId);
-            notifJson.add("message", "CRITICAL: Unauthorized fuel flow detected on locked node!");
-            notifJson.add("read", false);
-            notifJson.add("timestamp", (double)getEpochTime());
-            
-            String notifPath = "/FuelGuardAI/Notifications";
-            Firebase.push(fbdo, notifPath, notifJson);
-        }
+        double nowMs = (double)getEpochTime() * 1000.0;
+        if (nowMs < 100000000000.0) nowMs = (double)millis();
+        
+        String notifPayload = "{\"type\":\"THEFT_ALERT\",\"deviceId\":\"" + deviceId + 
+                             "\",\"message\":\"CRITICAL: Unauthorized fuel flow detected on locked node!\"" + 
+                             ",\"read\":false,\"timestamp\":" + String(nowMs, 0) + "}";
+        sendHttpPost("/FuelGuardAI/Notifications", notifPayload);
     }
 }
 
 void reportHeartbeat() {
-    if (!firebaseReady) return;
-    String basePath = "/FuelGuardAI/Devices/" + deviceId;
+    if (WiFi.status() != WL_CONNECTED) return;
+    
     double nowMs = (double)getEpochTime() * 1000.0;
-    if (nowMs < 100000000000.0) {
-        nowMs = (double)millis();
-    }
+    if (nowMs < 100000000000.0) nowMs = (double)millis();
     
-    FirebaseJson json;
-    json.add("name", "Nikhil Node");
-    json.add("status", "online");
-    json.add("wifiStrength", WiFi.RSSI());
-    json.add("lastSeen", nowMs);
-    json.add("calibrationFactor", activeCalibrationFactor);
-    json.add("lockStatus", deviceLocked);
-    json.add("firmwareVersion", "1.0.0");
-    
-    if (Firebase.updateNode(fbdo, basePath, json)) {
-        Serial.println(F("[Heartbeat] Signal sent successfully (ONLINE)"));
-    } else {
-        Serial.printf("[Heartbeat] Update error: %s\n", fbdo.errorReason().c_str());
+    String payload = "{\"name\":\"Nikhil Node\",\"status\":\"online\",\"wifiStrength\":" + String(WiFi.RSSI()) + 
+                     ",\"lastSeen\":" + String(nowMs, 0) + 
+                     ",\"calibrationFactor\":" + String(activeCalibrationFactor, 2) + 
+                     ",\"lockStatus\":" + String(deviceLocked ? "true" : "false") + 
+                     ",\"firmwareVersion\":\"1.0.0\"}";
+
+    bool ok1 = sendHttpPatch("/FuelGuardAI/Devices/" + deviceId, payload);
+    if (deviceId != "DEVICE_ESP8266") {
+        sendHttpPatch("/FuelGuardAI/Devices/DEVICE_ESP8266", payload);
     }
 
-    // Dual fallback update to DEVICE_ESP8266 so all dropdown selections in Web Dashboard show ONLINE
-    if (deviceId != "DEVICE_ESP8266") {
-        Firebase.updateNode(fbdo, "/FuelGuardAI/Devices/DEVICE_ESP8266", json);
+    if (ok1) {
+        Serial.println(F("[Heartbeat] Firebase RTDB updated -> Status: ONLINE (200 OK)"));
+        firebaseReady = true;
+    } else {
+        Serial.println(F("[Heartbeat] REST update failed. Retrying..."));
     }
 }
 
 void checkRemoteCommands() {
-    if (!firebaseReady) return;
+    if (WiFi.status() != WL_CONNECTED) return;
     
-    // Sync lock status dynamically
-    if (Firebase.getBool(fbdo, "/FuelGuardAI/Devices/" + deviceId + "/config/lockStatus")) {
-        deviceLocked = fbdo.boolData();
+    String resp = sendHttpGet("/FuelGuardAI/Devices/" + deviceId + "/config");
+    if (resp.length() > 0 && resp != "null") {
+        if (resp.indexOf("\"lockStatus\":true") != -1) {
+            deviceLocked = true;
+        } else if (resp.indexOf("\"lockStatus\":false") != -1) {
+            deviceLocked = false;
+        }
     }
 
-    String path = "/FuelGuardAI/Devices/" + deviceId + "/commands/action";
-    if (Firebase.getString(fbdo, path)) {
-        String cmd = fbdo.stringData();
-        if (cmd.length() > 0 && cmd != "null") {
-            Serial.printf("[Firebase] Command: %s\n", cmd.c_str());
-            Firebase.setString(fbdo, path, ""); // Clear command
-
-            if (cmd == "restart") {
-                delay(1000);
-                ESP.restart();
-            } 
-            else if (cmd == "reconnectWifi") {
-                WiFi.disconnect();
-                WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-            } 
-            else if (cmd == "resetToday") {
-                accumulatedTodayFuel = 0.0f;
-                saveProfile();
-            }
-            else if (cmd == "syncSettings") {
-                // Read latest Price
-                if (Firebase.getFloat(fbdo, "/FuelGuardAI/Settings/fuelPrice/current")) {
-                    float pr = fbdo.floatData();
-                    if (pr > 0.0f) fuelPrice = pr;
-                }
-
-                // Read Calibration Factor
-                if (Firebase.getFloat(fbdo, "/FuelGuardAI/Devices/" + deviceId + "/config/calibrationFactor")) {
-                    float cal = fbdo.floatData();
-                    if (cal > 0.1f && cal < 30.0f) {
-                        activeCalibrationFactor = cal;
-                        saveProfile();
-                    }
-                }
-            }
-            else if (cmd == "startCalibration") {
-                isCalibrationMode = true;
-                pulseCount = 0;
-            }
-            else if (cmd == "stopCalibration") {
-                isCalibrationMode = false;
-            }
+    String cmdResp = sendHttpGet("/FuelGuardAI/Devices/" + deviceId + "/commands/action");
+    if (cmdResp.length() > 0 && cmdResp != "null" && cmdResp != "\"\"") {
+        Serial.printf("[Cloud] Received Command: %s\n", cmdResp.c_str());
+        sendHttpPatch("/FuelGuardAI/Devices/" + deviceId + "/commands", "{\"action\":\"\"}");
+        
+        if (cmdResp.indexOf("restart") != -1) {
+            delay(1000);
+            ESP.restart();
+        } else if (cmdResp.indexOf("resetToday") != -1) {
+            accumulatedTodayFuel = 0.0f;
+            saveProfile();
         }
     }
 }
 
 void pushLiveReadings() {
-    if (!firebaseReady) return;
-    String basePath = "/FuelGuardAI/LiveData/" + deviceId;
-    double nowMs = (double)getEpochTime() * 1000.0;
-    if (nowMs < 100000000000.0) {
-        nowMs = (double)millis();
-    }
+    if (WiFi.status() != WL_CONNECTED) return;
     
-    FirebaseJson json;
-    json.add("flowRate", currentFlowRate);
-    json.add("totalLitres", sessionLitres);
-    json.add("fuelCost", sessionCost);
-    json.add("pulseCount", sessionPulses);
-    json.add("status", (systemState == STATE_FILLING ? "Filling" : "Waiting"));
-    json.add("timestamp", nowMs);
+    double nowMs = (double)getEpochTime() * 1000.0;
+    if (nowMs < 100000000000.0) nowMs = (double)millis();
+    
+    String payload = "{\"flowRate\":" + String(currentFlowRate, 2) + 
+                     ",\"totalLitres\":" + String(sessionLitres, 2) + 
+                     ",\"fuelCost\":" + String(sessionCost, 2) + 
+                     ",\"pulseCount\":" + String(sessionPulses) + 
+                     ",\"status\":\"" + String(systemState == STATE_FILLING ? "Filling" : "Waiting") + "\"" + 
+                     ",\"timestamp\":" + String(nowMs, 0) + "}";
 
-    Firebase.updateNode(fbdo, basePath, json);
+    sendHttpPatch("/FuelGuardAI/LiveData/" + deviceId, payload);
     if (deviceId != "DEVICE_ESP8266") {
-        Firebase.updateNode(fbdo, "/FuelGuardAI/LiveData/DEVICE_ESP8266", json);
+        sendHttpPatch("/FuelGuardAI/LiveData/DEVICE_ESP8266", payload);
     }
 }
 
 void commitTransaction() {
-    if (!firebaseReady) return;
-    String pushPath = "/FuelGuardAI/Transactions";
+    if (WiFi.status() != WL_CONNECTED) return;
     
-    FirebaseJson json;
-    json.add("deviceId", deviceId);
-    json.add("vehicleId", "VH-AUTO");
-    json.add("fuel", sessionLitres);
-    json.add("price", sessionCost);
-    json.add("pricePerLitre", fuelPrice);
-    json.add("duration", (sessionEndTime - sessionStartTime) / 1000);
-    json.add("date", getFormattedDate());
-    json.add("status", "completed");
-    json.add("startTime", (double)sessionStartTime);
-    json.add("endTime", (double)sessionEndTime);
+    double startTimeMs = (double)sessionStartTime;
+    double endTimeMs = (double)sessionEndTime;
+    uint32_t durationSec = (sessionEndTime - sessionStartTime) / 1000;
     
-    Firebase.push(fbdo, pushPath, json);
+    String payload = "{\"deviceId\":\"" + deviceId + "\"" + 
+                     ",\"vehicleId\":\"VH-AUTO\"" + 
+                     ",\"fuel\":" + String(sessionLitres, 2) + 
+                     ",\"price\":" + String(sessionCost, 2) + 
+                     ",\"pricePerLitre\":" + String(fuelPrice, 2) + 
+                     ",\"duration\":" + String(durationSec) + 
+                     ",\"date\":\"" + getFormattedDate() + "\"" + 
+                     ",\"status\":\"completed\"" + 
+                     ",\"startTime\":" + String(startTimeMs, 0) + 
+                     ",\"endTime\":" + String(endTimeMs, 0) + "}";
 
-    // Write cloud alert notification
-    FirebaseJson notifJson;
-    notifJson.add("type", "FUEL_COMPLETED");
-    notifJson.add("deviceId", deviceId);
-    notifJson.add("message", "Fueling session completed: " + String(sessionLitres) + "L");
-    notifJson.add("read", false);
-    notifJson.add("timestamp", (double)getEpochTime());
+    sendHttpPost("/FuelGuardAI/Transactions", payload);
+
+    double nowMs = (double)getEpochTime() * 1000.0;
+    if (nowMs < 100000000000.0) nowMs = (double)millis();
     
-    String notifPath = "/FuelGuardAI/Notifications";
-    Firebase.push(fbdo, notifPath, notifJson);
+    String notifPayload = "{\"type\":\"FUEL_COMPLETED\",\"deviceId\":\"" + deviceId + 
+                         "\",\"message\":\"Fueling session completed: " + String(sessionLitres, 2) + "L\"" + 
+                         ",\"read\":false,\"timestamp\":" + String(nowMs, 0) + "}";
+    sendHttpPost("/FuelGuardAI/Notifications", notifPayload);
 }
 
 // ==========================================
@@ -567,59 +575,15 @@ void setup() {
     configTime(19800, 0, "pool.ntp.org", "time.nist.gov");
     delay(500);
 
-    // Initial OTA configuration parameters
-    // printLcdLine(1, "Starting OTA... ");
-    // Serial.println(F("[Boot] Initializing ArduinoOTA..."));
-    // ArduinoOTA.setHostname(deviceId.c_str());
-    // ArduinoOTA.setPassword("FuelGuardOTA99");
-    // ArduinoOTA.begin();
-    // Serial.println(F("[Boot] ArduinoOTA initialized successfully."));
-    delay(500);
-
     printLcdLine(1, "System Ready!   ");
     delay(1000);
 
-    Serial.println(F("[System] Boot Sequence completed. Loops active."));
+    Serial.println(F("[System] Boot Sequence completed. Native REST Engine active."));
 }
 
 void loop() {
     unsigned long now = millis();
-
-    // Process OTA packets in background
-    // ArduinoOTA.handle();
-
     bool isConnected = (WiFi.status() == WL_CONNECTED);
-
-    // Initialize Firebase as soon as WiFi is connected
-    if (isConnected && !firebaseInitialized) {
-        Serial.println(F("[Firebase] WiFi active. Initializing Firebase client..."));
-        Serial.printf("[System] Free heap before Firebase init: %d bytes\n", ESP.getFreeHeap());
-        
-        fbConfig.host = FIREBASE_HOST;
-        fbConfig.database_url = FIREBASE_DATABASE_URL;
-        fbConfig.api_key = FIREBASE_API_KEY;
-        fbConfig.signer.tokens.legacy_token = FIREBASE_API_KEY;
-        fbConfig.signer.test_mode = true;
-        
-        Firebase.begin(&fbConfig, &fbAuth);
-        Firebase.reconnectWiFi(true);
-        firebaseInitialized = true;
-        Serial.println(F("[Firebase] Client initialization completed successfully (Token Bypassed / Fully Active)."));
-        Serial.printf("[System] Free heap after Firebase init: %d bytes\n", ESP.getFreeHeap());
-    }
-
-    bool isFbReady = firebaseInitialized && (WiFi.status() == WL_CONNECTED);
-
-    if (isFbReady != firebaseReady) {
-        firebaseReady = isFbReady;
-        if (firebaseReady) {
-            Serial.println(F("[Firebase] Connection successful! Device status: ONLINE."));
-            reportHeartbeat();
-        } else {
-            Serial.printf("[Firebase] Connection lost. Reason: %s\n", fbdo.errorReason().c_str());
-            Serial.printf("[System] Free Heap: %d bytes\n", ESP.getFreeHeap());
-        }
-    }
 
     // 1. Core Flow Rate computations & State Machine logic
     if (now - lastSensorRead >= 500) {
@@ -735,24 +699,24 @@ void loop() {
         refreshLcdDisplay(screenStatus);
     }
 
-    // 4. Remote config command queries (Every 5 seconds)
-    if (now - lastCommandCheck >= 5000) {
+    // 4. Remote config command queries (Every 3 seconds)
+    if (now - lastCommandCheck >= 3000) {
         lastCommandCheck = now;
         checkRemoteCommands();
     }
 
     // 5. Firebase live telemetry pushes
-    unsigned long pushInterval = (systemState == STATE_FILLING) ? 1000 : 10000;
+    unsigned long pushInterval = (systemState == STATE_FILLING) ? 1000 : 3000;
     if (now - lastFirebasePush >= pushInterval) {
         lastFirebasePush = now;
         pushLiveReadings();
     }
 
-    // 6. WiFi Connection checking watchdog & Heartbeat (Every 5 seconds)
-    if (now - lastWifiCheck >= 5000) {
+    // 6. WiFi Connection checking watchdog & Heartbeat (Every 3 seconds)
+    if (now - lastWifiCheck >= 3000) {
         lastWifiCheck = now;
         if (!isConnected) {
-            Serial.println(F("[WiFi] Network Connection lost. Reconnecting..."));
+            Serial.println(F("[WiFi] Connection lost. Reconnecting..."));
             WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
         } else {
             reportHeartbeat();

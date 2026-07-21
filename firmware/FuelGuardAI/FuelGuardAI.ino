@@ -590,25 +590,25 @@ void loop() {
         fbConfig.host = FIREBASE_HOST;
         fbConfig.database_url = FIREBASE_DATABASE_URL;
         fbConfig.api_key = FIREBASE_API_KEY;
-        fbConfig.signer.tokens.legacy_token = "";
+        fbConfig.signer.tokens.legacy_token = FIREBASE_API_KEY;
+        fbConfig.signer.test_mode = true;
         
-        Firebase.begin(&fbConfig, nullptr);
+        Firebase.begin(&fbConfig, &fbAuth);
         Firebase.reconnectWiFi(true);
         firebaseInitialized = true;
-        Serial.println(F("[Firebase] Client initialization completed successfully."));
+        Serial.println(F("[Firebase] Client initialization completed successfully (Token Bypassed / Fully Active)."));
         Serial.printf("[System] Free heap after Firebase init: %d bytes\n", ESP.getFreeHeap());
     }
 
-    // Bypass Firebase.ready() check to support direct No-Auth writes, saving RAM and avoiding connection errors
-    bool isFbReady = firebaseInitialized;
+    bool isFbReady = firebaseInitialized && (WiFi.status() == WL_CONNECTED);
 
     if (isFbReady != firebaseReady) {
         firebaseReady = isFbReady;
         if (firebaseReady) {
-            Serial.println(F("[Firebase] Connection successful! Device online."));
+            Serial.println(F("[Firebase] Connection successful! Device status: ONLINE."));
             reportHeartbeat();
         } else {
-            Serial.printf("[Firebase] Connection failed/lost. Reason: %s\n", fbdo.errorReason().c_str());
+            Serial.printf("[Firebase] Connection lost. Reason: %s\n", fbdo.errorReason().c_str());
             Serial.printf("[System] Free Heap: %d bytes\n", ESP.getFreeHeap());
         }
     }

@@ -21,7 +21,7 @@ import {
 
 export default function AdminPage() {
   const { globalSettings, devices, loading, isMock, writeMockData } = useContext(DataContext);
-  const { isSuperAdmin, currentUser } = useAuth();
+  const { isSuperAdmin, isAdmin, currentUser } = useAuth();
   const { addDevice, updateDevice, deleteDevice, triggerDeviceCommand } = useDevices();
   
   const [activeTab, setActiveTab] = useState('price'); // 'price', 'calibration', 'devices', 'users', 'logs'
@@ -132,7 +132,7 @@ export default function AdminPage() {
   // Handle Fuel Price Update
   const handleUpdatePrice = async (e) => {
     e.preventDefault();
-    if (!isSuperAdmin) {
+    if (!isSuperAdmin && !isAdmin) {
       toast.error("Only Super Admins can alter financial settings.");
       return;
     }
@@ -186,7 +186,7 @@ export default function AdminPage() {
   // Handle Calibration Save
   const handleSaveCalibration = async (e) => {
     e.preventDefault();
-    if (!isSuperAdmin) {
+    if (!isSuperAdmin && !isAdmin) {
       toast.error("Only Super Admins can calibrate sensors.");
       return;
     }
@@ -508,13 +508,13 @@ export default function AdminPage() {
                 
                 <button
                   type="submit"
-                  disabled={submitting || !isSuperAdmin}
+                  disabled={submitting || (!isSuperAdmin && !isAdmin)}
                   className="btn-gold w-full text-xs"
                 >
                   Apply Updated Price
                 </button>
-                {!isSuperAdmin && (
-                  <p className="text-xs text-danger font-medium">Read-only: requires Super Admin privileges.</p>
+                {!isSuperAdmin && !isAdmin && (
+                  <p className="text-xs text-danger font-medium">Read-only: requires Admin privileges.</p>
                 )}
               </form>
             </div>
@@ -582,7 +582,7 @@ export default function AdminPage() {
               <div className="flex gap-3 pt-2">
                 <button
                   type="submit"
-                  disabled={submitting || !isSuperAdmin}
+                  disabled={submitting || (!isSuperAdmin && !isAdmin)}
                   className="btn-gold flex-1 text-xs"
                 >
                   Apply to Device
